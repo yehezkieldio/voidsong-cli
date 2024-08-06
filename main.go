@@ -2,130 +2,183 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
+	"strings"
 
+	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
-type ResultMessage struct {
-	msg string
+var docStyle = lipgloss.NewStyle().Margin(1, 2)
+var errorTextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+
+type item struct {
+	generator Generator
+}
+
+func (i item) FilterValue() string { return i.generator.FilterValue() }
+
+type itemDelegate struct{}
+
+func (d itemDelegate) Height() int                             { return 1 }
+func (d itemDelegate) Spacing() int                            { return 0 }
+func (d itemDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
+func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
+	i, ok := listItem.(item)
+	if !ok {
+		return
+	}
+
+	str := fmt.Sprintf("%d. %s", index+1, i.generator.Name())
+
+	fn := lipgloss.NewStyle().PaddingLeft(4).Render
+	if index == m.Index() {
+		fn = func(s ...string) string {
+			return lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("170")).Render("> " + strings.Join(s, " "))
+		}
+	}
+
+	fmt.Fprint(w, fn(str))
 }
 
 type Generator interface {
-	Generate() (ResultMessage, error)
+	Name() string
+	Run() error
+	FilterValue() string
 }
 
-type AdapterRunner struct {
-	adapters map[string]Generator
+type PrettierGenerator struct{}
+
+func (g *PrettierGenerator) Name() string {
+	return "Prettier"
 }
 
-func NewAdapterRunner() *AdapterRunner {
-	return &AdapterRunner{
-		adapters: make(map[string]Generator),
+func (g *PrettierGenerator) FilterValue() string {
+	return "prettier"
+}
+
+func (g *PrettierGenerator) Run() error {
+	fmt.Println("Finding package.json...")
+	if _, err := os.Stat("package.json"); os.IsNotExist(err) {
+		fmt.Println(" Cannot find package.json!")
+		fmt.Println(errorTextStyle.Render("\nPlease ensure you are in the root of a project with a package.json file."))
+		return nil
+	} else {
+		fmt.Println(" Found package.json!")
 	}
-}
 
-func (r *AdapterRunner) RegisterAdapter(name string, adapter Generator) {
-	r.adapters[name] = adapter
-}
-
-func (r *AdapterRunner) Run(adapterName string) (ResultMessage, error) {
-	adapter, ok := r.adapters[adapterName]
-	if !ok {
-		return ResultMessage{}, fmt.Errorf("adapter '%s' not found", adapterName)
+	fmt.Println("Finding existing configuration...")
+	matches, err := filepath.Glob("*prettierrc*")
+	if err != nil {
+		fmt.Println(errorTextStyle.Render("\nError finding existing configuration: " + err.Error()))
+		return nil
 	}
-	return adapter.Generate()
-}
 
-type ESLintAdapter struct{}
+	if len(matches) > 0 {
+		fmt.Println(" Existing configuration found!")
+		fmt.Println(" Please remove the existing configuration before running this generator.")
+		fmt.Println("  - " + strings.Join(matches, "\n  - "))
+	} else {
+		fmt.Println(" No existing configuration found, creating new configuration...")
+	}
 
-func (e ESLintAdapter) Generate() (ResultMessage, error) {
-	return ResultMessage{msg: "ESLint generation successful"}, nil
-}
-
-type Model struct {
-	runner    *AdapterRunner
-	adapters  []string
-	cursor    int
-	selected  string
-	generated bool
-	results   []ResultMessage
-}
-
-func (m Model) Init() tea.Cmd {
 	return nil
 }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+type model struct {
+	list     list.Model
+	choice   Generator
+	spinner  spinner.Model
+	quitting bool
+	err      error
+}
+
+func initialModel() model {
+	generators := []list.Item{
+		item{generator: &PrettierGenerator{}},
+	}
+
+	l := list.New(generators, itemDelegate{}, 20, 14)
+	l.Title = "Select a generator"
+	l.SetShowStatusBar(false)
+	l.SetFilteringEnabled(false)
+
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
+	return model{
+		list:    l,
+		spinner: s,
+	}
+}
+
+func (m model) Init() tea.Cmd {
+	return nil
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
+			m.quitting = true
 			return m, tea.Quit
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "down", "j":
-			if m.cursor < len(m.adapters)-1 {
-				m.cursor++
-			}
 		case "enter":
-			m.selected = m.adapters[m.cursor]
-			result, err := m.runner.Run(m.selected)
-			if err != nil {
-				m.results = append(m.results, ResultMessage{msg: err.Error()})
-			} else {
-				m.generated = true
-				m.results = append(m.results, result)
+			i, ok := m.list.SelectedItem().(item)
+			if ok {
+				m.choice = i.generator
+				// return m, tea.Quit
+				return m, tea.Batch(
+					runGenerator(m.choice),
+				)
 			}
+		}
+	case tea.WindowSizeMsg:
+		h, v := docStyle.GetFrameSize()
+		m.list.SetSize(msg.Width-h, msg.Height-v)
+	case generatorFinishedMsg:
+		if msg.err != nil {
+			m.err = msg.err
 			return m, tea.Quit
 		}
+		m.quitting = true
+		return m, tea.Quit
 	}
-	return m, nil
+
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return m, cmd
 }
 
-func (m Model) View() string {
-	var s string
+func (m model) View() string {
+	return docStyle.Render(m.list.View())
+}
 
-	s += "Select a generator to run:\n\n"
+type generatorFinishedMsg struct{ err error }
 
-	for i, adapter := range m.adapters {
-		if i == m.cursor {
-			s += fmt.Sprintf(" > %s\n", adapter)
-		} else {
-			s += fmt.Sprintf("   %s\n", adapter)
-		}
+func runGenerator(g Generator) tea.Cmd {
+	return func() tea.Msg {
+		return generatorFinishedMsg{g.Run()}
 	}
-
-	if len(m.results) > 0 {
-		s += "\n\n"
-		for _, res := range m.results {
-			s += fmt.Sprintf("%s\n", res.msg)
-		}
-	}
-
-	return s
 }
 
 func main() {
-	runner := NewAdapterRunner()
-	runner.RegisterAdapter("eslint", &ESLintAdapter{})
-
-	adapters := make([]string, 0, len(runner.adapters))
-	for name := range runner.adapters {
-		adapters = append(adapters, name)
-	}
-
-	model := Model{
-		runner:   runner,
-		adapters: adapters,
-		results:  []ResultMessage{},
-	}
-
-	p := tea.NewProgram(model)
-	if _, err := p.Run(); err != nil {
-		fmt.Printf("Error running program: %v", err)
+	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
+	m, err := p.Run()
+	if err != nil {
+		fmt.Println("Error running program:", err)
 		os.Exit(1)
+	}
+
+	if m, ok := m.(model); ok && m.choice != nil {
+		if err := m.choice.Run(); err != nil {
+			fmt.Printf("Error running generator: %v\n", err)
+			os.Exit(1)
+		}
 	}
 }
