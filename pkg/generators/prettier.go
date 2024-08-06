@@ -13,6 +13,10 @@ func (g *PrettierGenerator) Name() string {
 	return "Prettier"
 }
 
+func (g *PrettierGenerator) Description() string {
+	return "Generate my opinionated Prettier configuration."
+}
+
 func (g *PrettierGenerator) FilterValue() string {
 	return "prettier"
 }

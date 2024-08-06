@@ -8,8 +8,8 @@ import (
 var DocStyle = lipgloss.NewStyle().Margin(1, 2)
 
 func NewList(items []list.Item) list.Model {
-	l := list.New(items, ItemDelegate{}, 20, 14)
-	l.Title = "Select a generator"
+	l := list.New(items, GeneratorDelegate{}, 20, 14)
+	l.Title = "Welcome to Voidsong! A personal configuration generator by @yehezkieldio"
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
 	return l

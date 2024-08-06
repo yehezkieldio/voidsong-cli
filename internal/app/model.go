@@ -19,6 +19,7 @@ type Model struct {
 func InitialModel() Model {
 	generators := []list.Item{
 		ui.Item{Generator: &generators.PrettierGenerator{}},
+		ui.Item{Generator: &generators.BiomeGenerator{}},
 	}
 
 	l := ui.NewList(generators)

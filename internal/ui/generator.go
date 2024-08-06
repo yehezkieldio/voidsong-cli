@@ -6,6 +6,7 @@ import (
 
 type Generator interface {
 	Name() string
+	Description() string
 	Run() error
 	FilterValue() string
 }
