@@ -18,11 +18,17 @@ func (g *PrettierGenerator) FilterValue() string {
 }
 
 func (g *PrettierGenerator) Run() error {
-	fmt.Println(ui.InfoTextStyle.Bold(true).Render("Configuring Prettier..."))
+	fmt.Println(ui.InfoTextStyle.Bold(true).MarginTop(2).MarginBottom(1).Render("Configuring Prettier..."))
 
-	l := utils.CheckPackageJSON()
-	if !l {
-		fmt.Println(ui.ErrorTextStyle.Render("Can't find a package.json file in the current directory! Are you sure you're in the right place?"))
+	fmt.Println(ui.TextStyle.Render("Checking availability..."))
+	avb, _ := utils.CheckAvailability()
+	if avb {
+		return nil
+	}
+
+	configFilesRegex := `\.prettierrc|\.prettierrc\.js|\.prettierrc\.json|\.prettierrc\.yaml|\.prettierrc\.yml|prettier\.config\.js|prettier\.config\.json|prettier\.config\.yaml|prettier\.config\.yml`
+	if utils.CheckConfigurationFile(configFilesRegex) {
+		fmt.Println(ui.ErrorTextStyle.Render("Please remove any existing Prettier configuration files before running this command."))
 		return nil
 	}
 
