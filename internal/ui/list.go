@@ -9,7 +9,8 @@ var DocStyle = lipgloss.NewStyle().Margin(1, 2)
 
 func NewList(items []list.Item) list.Model {
 	l := list.New(items, GeneratorDelegate{}, 20, 14)
-	l.Title = "Welcome to Voidsong! A personal configuration generator by @yehezkieldio"
+	l.Title = "\nWelcome to Voidsong!\nA personal configuration generator by @yehezkieldio"
+	l.Styles.Title = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("218"))
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
 	return l

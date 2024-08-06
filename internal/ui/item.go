@@ -19,7 +19,7 @@ func (i Item) FilterValue() string { return i.Generator.FilterValue() }
 type GeneratorDelegate struct{}
 
 func (d GeneratorDelegate) Height() int                             { return 4 }
-func (d GeneratorDelegate) Spacing() int                            { return 1 }
+func (d GeneratorDelegate) Spacing() int                            { return 0 }
 func (d GeneratorDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
 func (d GeneratorDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
 	var (
