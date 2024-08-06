@@ -7,8 +7,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+type ResultMessage struct {
+	msg string
+}
+
 type Generator interface {
-	Generate() (err error)
+	Generate() (ResultMessage, error)
 }
 
 type AdapterRunner struct {
@@ -25,22 +29,18 @@ func (r *AdapterRunner) RegisterAdapter(name string, adapter Generator) {
 	r.adapters[name] = adapter
 }
 
-func (r *AdapterRunner) Run(adapterName string) error {
+func (r *AdapterRunner) Run(adapterName string) (ResultMessage, error) {
 	adapter, ok := r.adapters[adapterName]
 	if !ok {
-		return fmt.Errorf("adapter '%s' not found", adapterName)
+		return ResultMessage{}, fmt.Errorf("adapter '%s' not found", adapterName)
 	}
 	return adapter.Generate()
 }
 
 type ESLintAdapter struct{}
 
-type ResultMessage struct {
-	msg string
-}
-
-func (e ESLintAdapter) Generate() (err error) {
-	return nil
+func (e ESLintAdapter) Generate() (ResultMessage, error) {
+	return ResultMessage{msg: "ESLint generation successful"}, nil
 }
 
 type Model struct {
@@ -72,12 +72,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			m.selected = m.adapters[m.cursor]
-			err := m.runner.Run(m.selected)
+			result, err := m.runner.Run(m.selected)
 			if err != nil {
 				m.results = append(m.results, ResultMessage{msg: err.Error()})
 			} else {
 				m.generated = true
-				m.results = append(m.results, ResultMessage{msg: fmt.Sprintf("Generated %s", m.selected)})
+				m.results = append(m.results, result)
 			}
 			return m, tea.Quit
 		}
@@ -90,12 +90,11 @@ func (m Model) View() string {
 
 	s += "Select a generator to run:\n\n"
 
-	s += "Adapters:\n"
 	for i, adapter := range m.adapters {
 		if i == m.cursor {
-			s += fmt.Sprintf("  > %s\n", adapter)
+			s += fmt.Sprintf(" > %s\n", adapter)
 		} else {
-			s += fmt.Sprintf("    %s\n", adapter)
+			s += fmt.Sprintf("   %s\n", adapter)
 		}
 	}
 
