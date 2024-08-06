@@ -7,7 +7,7 @@
 *.dll
 *.so
 *.dylib
-cli
+voidsong
 
 # Test binary, built with `go test -c`
 *.test
